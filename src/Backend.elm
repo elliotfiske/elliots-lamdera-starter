@@ -54,8 +54,13 @@ update msg model =
             ( model, Command.none )
 
 
-updateFromFrontend : SessionId -> ClientId -> ToBackend -> Model -> ( Model, Command restriction toMsg BackendMsg )
+updateFromFrontend : SessionId -> ClientId -> ToBackend -> Model -> ( Model, Command BackendOnly ToFrontend BackendMsg )
 updateFromFrontend sessionId clientId msg model =
     case msg of
+        PingFromFrontend ->
+            ( model
+            , Effect.Lamdera.sendToFrontend clientId (PongFromBackend "Pong! Backend received your ping.")
+            )
+
         NoOpToBackend ->
             ( model, Command.none )

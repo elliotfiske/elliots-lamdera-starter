@@ -7,6 +7,7 @@ import Effect.Lamdera
 import Effect.Subscription as Subscription exposing (Subscription)
 import Html
 import Html.Attributes as Attr
+import Html.Events as Events
 import Lamdera as L
 import Types exposing (..)
 import Url
@@ -42,7 +43,7 @@ init url key =
     )
 
 
-update : FrontendMsg -> Model -> ( Model, Command restriction toMsg FrontendMsg )
+update : FrontendMsg -> Model -> ( Model, Command Command.FrontendOnly ToBackend FrontendMsg )
 update msg model =
     case msg of
         UrlClicked _ ->
@@ -53,6 +54,9 @@ update msg model =
             -- Currently unneeded (everything is on one page)
             ( model, Command.none )
 
+        PingClicked ->
+            ( model, Effect.Lamdera.sendToBackend PingFromFrontend )
+
         NoOpFrontendMsg ->
             ( model, Command.none )
 
@@ -60,6 +64,9 @@ update msg model =
 updateFromBackend : ToFrontend -> Model -> ( Model, Command restriction toMsg FrontendMsg )
 updateFromBackend msg model =
     case msg of
+        PongFromBackend reply ->
+            ( { model | message = reply }, Command.none )
+
         NoOpToFrontend ->
             ( model, Command.none )
 
@@ -73,8 +80,15 @@ view model =
             , Html.div
                 [ Attr.style "font-family" "sans-serif"
                 , Attr.style "padding-top" "40px"
+                , Attr.attribute "data-testid" "message"
                 ]
                 [ Html.text model.message ]
+            , Html.button
+                [ Attr.id "ping-button"
+                , Events.onClick PingClicked
+                , Attr.style "margin-top" "20px"
+                ]
+                [ Html.text "Ping" ]
             ]
         ]
     }

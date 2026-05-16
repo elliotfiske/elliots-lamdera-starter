@@ -20,11 +20,13 @@ type alias BackendModel =
 type FrontendMsg
     = UrlClicked Effect.Browser.UrlRequest
     | UrlChanged Url
+    | PingClicked
     | NoOpFrontendMsg
 
 
 type ToBackend
-    = NoOpToBackend
+    = PingFromFrontend
+    | NoOpToBackend
 
 
 type BackendMsg
@@ -34,4 +36,5 @@ type BackendMsg
 
 
 type ToFrontend
-    = NoOpToFrontend
+    = PongFromBackend String
+    | NoOpToFrontend
