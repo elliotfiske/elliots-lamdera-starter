@@ -19,10 +19,12 @@ if [[ "$FILE_PATH" != *.elm ]]; then
   exit 0
 fi
 
-# Determine project root: walk up from the file until we find elm.json
+# Determine project root: walk up from the file until we find elm.json.
+# Skip a nested `review/elm.json` (that's elm-review's own config project,
+# not the app we want to review) and keep walking to the real app root.
 DIR=$(dirname "$FILE_PATH")
 while [[ "$DIR" != "/" ]]; do
-  if [[ -f "$DIR/elm.json" ]]; then
+  if [[ -f "$DIR/elm.json" && "$(basename "$DIR")" != "review" ]]; then
     break
   fi
   DIR=$(dirname "$DIR")
@@ -35,7 +37,18 @@ fi
 
 # Run elm-review from the project root (plain-text output)
 cd "$DIR"
-if OUTPUT=$(elm-review 2>&1); then
+if [[ -x "./node_modules/.bin/elm-review" ]]; then
+  REVIEW_CMD="./node_modules/.bin/elm-review"
+elif command -v elm-review >/dev/null 2>&1; then
+  REVIEW_CMD="elm-review"
+elif command -v npx >/dev/null 2>&1; then
+  REVIEW_CMD="npx --no-install elm-review"
+else
+  echo "elm-review: binary not found (looked in node_modules/.bin, PATH, npx)" >&2
+  exit 0
+fi
+
+if OUTPUT=$($REVIEW_CMD 2>&1); then
   echo "elm-review: no errors." >&2
   exit 0
 fi

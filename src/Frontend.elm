@@ -1,15 +1,15 @@
-module Frontend exposing (..)
+module Frontend exposing (app, app_)
 
-import Effect.Browser exposing (UrlRequest)
+import Effect.Browser
 import Effect.Browser.Navigation
 import Effect.Command as Command exposing (Command)
 import Effect.Lamdera
-import Effect.Subscription as Subscription exposing (Subscription)
+import Effect.Subscription as Subscription
 import Html
 import Html.Attributes as Attr
 import Html.Events as Events
 import Lamdera as L
-import Types exposing (..)
+import Types exposing (FrontendModel, FrontendMsg(..), ToBackend(..), ToFrontend(..))
 import Url
 
 

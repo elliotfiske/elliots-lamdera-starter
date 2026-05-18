@@ -1,4 +1,11 @@
-module Types exposing (..)
+module Types exposing
+    ( BackendModel
+    , BackendMsg(..)
+    , FrontendModel
+    , FrontendMsg(..)
+    , ToBackend(..)
+    , ToFrontend(..)
+    )
 
 import Effect.Browser exposing (UrlRequest)
 import Effect.Browser.Navigation exposing (Key)
@@ -7,7 +14,7 @@ import Url exposing (Url)
 
 
 type alias FrontendModel =
-    { key : Effect.Browser.Navigation.Key
+    { key : Key
     , message : String
     }
 
@@ -18,7 +25,7 @@ type alias BackendModel =
 
 
 type FrontendMsg
-    = UrlClicked Effect.Browser.UrlRequest
+    = UrlClicked UrlRequest
     | UrlChanged Url
     | PingClicked
     | NoOpFrontendMsg

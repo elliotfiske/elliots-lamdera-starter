@@ -55,18 +55,22 @@ Add Sign in with Apple as the auth provider.
 
 ---
 
-## 4. `elm-review` configuration
+## 4. `elm-review` configuration ✅
 
-Set up `elm-review` with a config based on
-https://github.com/jxxcarlson/kitchen-sink/blob/main/review/src/ReviewConfig.elm.
+Wired up. Config in `review/src/ReviewConfig.elm` (based on kitchen-sink).
+Run with `npm run review`.
 
-**Context for a fresh session**
-- Create `review/` directory with its own `elm.json` and
-  `review/src/ReviewConfig.elm`.
-- Copy the rule set from kitchen-sink and adjust to taste — likely strip
-  project-specific exceptions.
-- Add an `npm`/`elm-tooling` entry or a `Makefile` target for
-  `elm-review --fix-all` so it's easy to run locally and in CI.
+Lamdera-specific adjustments:
+- `NoUnused.Exports` ignores Lamdera's four magic modules (`Backend`,
+  `Frontend`, `Types`, `Env`) because Lamdera's runtime introspects `app`
+  without any Elm code calling it. `NoExposingEverything` and
+  `NoImportingEverything` apply globally — the magic modules use narrow
+  explicit exposing lists (`app`, `app_`, and the wire types).
+- `NoUnused.Dependencies` is disabled because Lamdera regenerates `elm.json`
+  and keeps `elm/browser` / `elm/bytes` in `direct` regardless.
+- The npm script does NOT pass `--compiler $(which lamdera)` — Lamdera's
+  compiler chokes on `elm-review-simplify`. Vanilla `elm` (already installed)
+  compiles the review config fine.
 
 ---
 
