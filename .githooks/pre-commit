@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Block commits to src/Env.elm that contain anything beyond the clean baseline.
+#
+# Lamdera requires Env.elm to be a valid, compilable module, so we can't
+# .gitignore it. Instead we keep a tracked clean baseline (Env-Clean.elm at the
+# repo root) and refuse any commit where the staged src/Env.elm doesn't match.
+#
+# To intentionally add a new config field: update BOTH src/Env.elm and
+# Env-Clean.elm in the same commit.
+
+set -euo pipefail
+
+ENV_FILE="src/Env.elm"
+CLEAN_FILE="Env-Clean.elm"
+
+# Only run if Env.elm is staged.
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -qx "$ENV_FILE"; then
+    exit 0
+fi
+
+if [ ! -f "$CLEAN_FILE" ]; then
+    echo "pre-commit: $CLEAN_FILE not found — cannot verify $ENV_FILE is clean." >&2
+    echo "  Either restore $CLEAN_FILE or bypass with: git commit --no-verify" >&2
+    exit 1
+fi
+
+staged_env=$(git show ":$ENV_FILE")
+clean_env=$(cat "$CLEAN_FILE")
+
+if [ "$staged_env" != "$clean_env" ]; then
+    echo "pre-commit: staged $ENV_FILE differs from $CLEAN_FILE." >&2
+    echo "" >&2
+    echo "  This usually means you're about to commit a secret/key in Env.elm." >&2
+    echo "  Restore the clean baseline before committing:" >&2
+    echo "    cp $CLEAN_FILE $ENV_FILE" >&2
+    echo "    git add $ENV_FILE" >&2
+    echo "" >&2
+    echo "  If you're intentionally adding a config field, update both files:" >&2
+    echo "    git add $ENV_FILE $CLEAN_FILE" >&2
+    echo "" >&2
+    echo "  Diff (staged vs clean):" >&2
+    diff -u <(echo "$clean_env") <(echo "$staged_env") | sed 's/^/    /' >&2 || true
+    exit 1
+fi

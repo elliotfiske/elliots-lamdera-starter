@@ -2,7 +2,8 @@
   "name": "lamdera-starter",
   "private": true,
   "scripts": {
-    "test": "elm-test-rs --compiler $(which lamdera)"
+    "test": "elm-test-rs --compiler $(which lamdera)",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "elm-test-rs": "3.0.2-0"
