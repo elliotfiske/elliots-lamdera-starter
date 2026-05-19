@@ -32,26 +32,40 @@ typed backend endpoints over HTTP.
 
 ---
 
-## 3. Auth: Sign in with Apple
+## 3. Auth: Sign in with GitHub ✅
 
-Add Sign in with Apple as the auth provider.
+`lamdera/auth` is copy-vendored under `vendor/lamdera-auth/` and wired up for
+GitHub OAuth. `src/Auth.elm` holds the config; `Types.elm` carries the
+auth-related fields (`authFlow`, `authRedirectBaseUrl`, `currentUser`,
+`pendingAuths`, `authenticatedSessions`); `Frontend.elm` handles
+`/login/OAuthGithub/callback` and shows a "Sign in with GitHub" button.
 
-**Context for a fresh session**
-- Apple's OAuth flow requires: an Apple Developer account, a Services ID, a
-  configured Return URL pointing at the deployed Lamdera app, and a signing key
-  (.p8) used to mint client secrets (JWT signed with ES256).
-- Decisions to make up front:
-  - Session storage: server-side session token in BackendModel keyed by a
-    cookie, vs. encoded JWT round-tripped to the client.
-  - Whether to use `form_post` response mode (Apple POSTs to your return URL)
-    vs. `query` — `form_post` is required if you ask for `name`/`email` scopes.
-- Reference implementations worth comparing:
-  - https://github.com/jxxcarlson/kitchen-sink (has an auth setup, though may be
-    Google/email-based)
-  - https://developer.apple.com/documentation/sign_in_with_apple
-- Lamdera-specific: Apple's POST callback hits an HTTP endpoint, which on
-  Lamdera means an RPC handler (see item #2) — so item #2 is effectively a
-  prerequisite.
+Architectural notes:
+- The Effect/raw-`Cmd` mismatch is bridged with `Effect.Command.fromCmd "auth"`
+  on the backend.
+- The frontend replicates `Auth.Flow.init` manually so it can use
+  `Effect.Browser.Navigation` (the package's version needs a raw
+  `Browser.Navigation.Key`).
+- The frontend constructs `AuthCallbackReceived` directly with the callback
+  URL — `Auth.Protocol.OAuth.accessTokenRequested` would have sent
+  `authRedirectBaseUrl` (path `/`), causing a `redirect_uri` mismatch on the
+  token exchange.
+- On `ClientConnected`, the backend re-pushes `GotUser` if the session is
+  already authenticated, so reloads restore the signed-in UI.
+- Privacy-first: vendored `Auth.Method.OAuthGithub` is locally patched to drop
+  the `user:email` scope and skip the `/user/emails` fallback. Users are
+  identified by GitHub username (no email collected).
+
+To deploy or switch GitHub OAuth Apps:
+1. Register the app at https://github.com/settings/developers with
+   `Authorization callback URL = <origin>/login/OAuthGithub/callback`.
+2. Set `Env.githubClientId` / `Env.githubClientSecret` in `src/Env.elm` locally
+   (NEVER in `Env-Clean.elm` — pre-commit hook blocks it).
+3. For production, set the same values via Lamdera's environment-variable UI.
+
+**Apple Sign-In** was the original plan; deferred. Apple's POST callback needs
+an HTTP endpoint, which on Lamdera means an RPC handler — so item #2 is still
+a prerequisite for that.
 
 ---
 
@@ -102,10 +116,7 @@ can iterate on UI changes without round-tripping through the user.
 
 ## Suggested order
 
-1. **#4 elm-review** — quickest win, no architectural decisions.
-2. **#1 program-test** — forces the `Effect`-based refactor of Frontend/Backend
-   which everything else benefits from.
-3. **#2 RPC** — prerequisite for #3.
-4. **#5 screenshot tooling** — orthogonal; do it whenever UI work picks up.
-5. **#3 Sign in with Apple** — most external moving parts; do last when the
-   foundation is stable.
+Items 1, 3, and 4 are done. Remaining:
+
+1. **#2 RPC** — would unlock Apple Sign-In if that ever comes back on the table.
+2. **#5 screenshot tooling** — orthogonal; do it whenever UI work picks up.
