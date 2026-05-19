@@ -67,6 +67,24 @@ Multi-statement scripts work; the last expression's value is returned. For
 async, wrap in `(async () => { ... })()` — `awaitPromise` is on by default.
 Objects are auto-JSON-stringified. Exceptions print to stderr with exit code 1.
 
+### Screenshots and rendered HTML
+
+For UI iteration, capture the live (post-Elm-init) DOM as a PNG or HTML:
+
+```bash
+node scripts/cdp-screenshot.js                          # → /tmp/lamdera-screenshot.png
+node scripts/cdp-screenshot.js --full-page              # capture beyond viewport
+node scripts/cdp-screenshot.js --out shot.png           # custom path
+node scripts/cdp-html.js                                # full document → stdout
+node scripts/cdp-html.js --selector '[data-testid="x"]' # outerHTML of one node
+node scripts/cdp-html.js --out page.html                # write to file
+```
+
+Both auto-pick the leader tab (`--any` to skip). The screenshot script prints
+the output path on stdout so the Read tool can open the PNG directly. Use
+`cdp-html.js` instead of `curl localhost:8000` when you need post-render
+output — the curl response is just Lamdera's bootstrap shell.
+
 ### What Lamdera already logs for free
 
 In dev mode, Lamdera pipes a lot of state into the browser console with no

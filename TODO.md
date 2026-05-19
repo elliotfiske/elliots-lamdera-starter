@@ -96,29 +96,19 @@ Lamdera-specific adjustments:
 
 ---
 
-## 5. Skill/tool for iterating on the `lamdera live` dashboard
+## 5. Skill/tool for iterating on the `lamdera live` dashboard ✅
 
-Goal: let Claude quickly grab a screenshot or the rendered HTML of the
-hot-reloading `lamdera live` dev server (default http://localhost:8000) so it
-can iterate on UI changes without round-tripping through the user.
+Wired up via the same CDP plumbing as `cdp-console.js` / `cdp-eval.js`:
 
-**Context for a fresh session**
-- `lamdera live` serves a normal web page — for HTML, a simple `curl
-  http://localhost:8000` may suffice for static markup, but client-rendered Elm
-  apps will need a headless browser to get post-`init` DOM.
-- Options to evaluate:
-  1. **Headless Chrome via `chrome-devtools` or Playwright CLI** — most robust;
-     can produce both screenshots and serialized DOM after Elm runtime has
-     executed.
-  2. **A tiny Chrome extension** that exposes a local endpoint Claude can hit
-     to dump the active tab's HTML/screenshot. Useful if the user already has
-     the page open during dev.
-  3. **A custom Claude Code skill** wrapping option 1 or 2, registered in
-     `.claude/skills/` so it's invokable as `/lamdera-screenshot` or similar.
-- Recommended path: start with Playwright (option 1) wrapped as a skill — no
-  browser extension install needed, works headlessly in CI too.
-- Reference: `~/.claude/skills/` for the skill format, and the
-  `toolsmith:creating-skills` skill.
+- `scripts/cdp-screenshot.js` — PNG of the leader tab (default
+  `/tmp/lamdera-screenshot.png`); `--full-page` for beyond-viewport, `--out` to
+  override path. Prints the path so the Read tool can open the PNG.
+- `scripts/cdp-html.js` — post-Elm-init `outerHTML`; `--selector <css>` for one
+  node, `--out` to write to file. Use this instead of `curl localhost:8000` —
+  the curl response is just Lamdera's bootstrap shell.
+
+No Playwright / extension needed; reuses the debug Chrome on `:9222` set up
+for console tailing.
 
 ---
 
@@ -154,9 +144,8 @@ with a custom rule that knows Lamdera's runtime contract.
 
 ## Suggested order
 
-Items 1–4 are done. Remaining:
+Items 1–5 are done. Remaining:
 
-1. **#5 screenshot tooling** — orthogonal; do it whenever UI work picks up.
-2. **#6 Lamdera-aware elm-review rule** — quality-of-life, not blocking
+1. **#6 Lamdera-aware elm-review rule** — quality-of-life, not blocking
    anything; pick up when adding the next Lamdera magic-module exemption
    starts to feel annoying.
