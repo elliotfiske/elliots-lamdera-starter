@@ -16,19 +16,27 @@ Run with `npm test` (which invokes `elm-test-rs --compiler $(which lamdera)`).
 
 ---
 
-## 2. RPC calls
+## 2. RPC calls ✅
 
-Set up the Lamdera RPC pattern so the frontend (or external clients) can call
-typed backend endpoints over HTTP.
+Wired up. `src/RPC.elm` dispatches via `lamdera_handleEndpoints`; one example
+endpoint (`ping`) accepts JSON `{"name": "..."}` and returns `{"pong": "..."}`.
+`src/LamderaRPC.elm` holds a minimal helper (`handleEndpointJson`); the fuller
+helper set (`asTask*` for frontend → backend, `handleEndpoint` for Wire3 bytes,
+etc.) lives at `bbdb147:OLD-dashboard/src/LamderaRPC.elm` — pull pieces back as
+endpoints need them.
 
-**Context for a fresh session**
-- Lamdera RPC uses an `RPC.elm` module that registers handlers; see the old
-  dashboard's `OLD-dashboard/src/RPC.elm` and `OLD-dashboard/src/LamderaRPC.elm`
-  in git history (`git show bbdb147 -- OLD-dashboard/src/RPC.elm` once they're
-  committed, or check `git log --all` for the deletion commit).
-- Decide whether the first RPC is called from the Elm frontend or from an
-  external HTTP client — the calling pattern differs.
-- Reference: https://dashboard.lamdera.app/docs/rpc
+External call:
+
+    curl -X POST -H 'Content-Type: application/json' \
+         -d '{"name":"world"}' http://localhost:8000/_r/ping
+
+Note: `lamdera live` runs the backend inside an open browser tab in dev mode,
+so RPC calls return `"no browser instances are running"` until you open
+`http://localhost:8000` in a browser. In production the backend is server-side
+and this constraint goes away.
+
+`src/RPC.elm` is added to `lamderaMagicModules` in elm-review because Lamdera
+introspects `lamdera_handleEndpoints` without any Elm code calling it.
 
 ---
 
@@ -100,6 +108,36 @@ can iterate on UI changes without round-tripping through the user.
 
 ---
 
+## 6. Lamdera-aware elm-review rule
+
+Replace the `lamderaMagicModules` ignore list in `review/src/ReviewConfig.elm`
+with a custom rule that knows Lamdera's runtime contract.
+
+**Context for a fresh session**
+- Today we exempt `Backend.elm`, `Frontend.elm`, `Types.elm`, `Env.elm`,
+  `RPC.elm`, `LamderaRPC.elm` from `NoUnused.Exports` because Lamdera's
+  auto-generated `elm-stuff/lamdera/Lamdera/*` modules call into them and
+  elm-review can't see those imports.
+- Two flavors of rule worth considering:
+  1. **Negative** — fork `NoUnused.Exports` to bake in the magic-module list.
+     Replaces a 6-line exemption with a package import. Low value for one
+     project; only worth it if reused across Lamdera apps or published.
+  2. **Positive** — a `Lamdera.RequiredExports` rule that asserts the magic
+     modules export what Lamdera expects: `Backend.app`, `Frontend.app`,
+     `RPC.lamdera_handleEndpoints` when the file exists,
+     `LamderaRPC.process` when the file exists. Catches the failure mode
+     we hit during RPC setup (`process` was trimmed → `lamdera make
+     src/RPC.elm` passed, but `lamdera live` died at runtime against the
+     generated `Lamdera/Live.elm`).
+- Recommended path: start with the positive rule as a **local** rule in
+  `review/src/`, narrow scope (just the three or four bindings above). Only
+  extract to a published package if it earns its keep over several projects.
+- Maintenance cost: Lamdera's contract surface is whatever its compiler
+  decides to call, which can drift across Lamdera versions. A published
+  package would need version-pinning notes.
+
+---
+
 ## Suggested order
 
 1. **#4 elm-review** — quickest win, no architectural decisions.
@@ -109,3 +147,6 @@ can iterate on UI changes without round-tripping through the user.
 4. **#5 screenshot tooling** — orthogonal; do it whenever UI work picks up.
 5. **#3 Sign in with Apple** — most external moving parts; do last when the
    foundation is stable.
+6. **#6 Lamdera-aware elm-review rule** — quality-of-life, not blocking
+   anything; pick up when adding the next Lamdera magic-module exemption
+   starts to feel annoying.

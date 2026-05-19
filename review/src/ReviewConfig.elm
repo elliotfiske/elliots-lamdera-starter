@@ -32,10 +32,11 @@ import Review.Rule as Rule exposing (Rule)
 import Simplify
 
 
-{-| Lamdera's runtime introspects `app` in these modules without any Elm code
-calling it, so `NoUnused.Exports` would flag it as dead. We keep the explicit
-exposing list narrow (just `app` / `app_`) and exempt these files from the
-unused-exports check.
+{-| Lamdera's runtime (and its auto-generated `elm-stuff/lamdera/Lamdera/*`
+modules, which elm-review can't see) introspects these files: `app` in
+Backend/Frontend, `lamdera_handleEndpoints` in RPC, `process` in LamderaRPC.
+`NoUnused.Exports` would flag those bindings as dead. We keep each module's
+exposing list narrow and exempt the files from the unused-exports check.
 -}
 lamderaMagicModules : List String
 lamderaMagicModules =
@@ -43,6 +44,8 @@ lamderaMagicModules =
     , "src/Frontend.elm"
     , "src/Types.elm"
     , "src/Env.elm"
+    , "src/RPC.elm"
+    , "src/LamderaRPC.elm"
     ]
 
 
