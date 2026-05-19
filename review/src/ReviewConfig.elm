@@ -49,30 +49,39 @@ lamderaMagicModules =
     ]
 
 
+{-| Third-party code we copy-vendor (e.g. lamdera/auth which isn't a published
+package) is exempted from all review rules — we don't own its style.
+-}
+vendoredDirectories : List String
+vendoredDirectories =
+    [ "vendor/" ]
+
+
 config : List Rule
 config =
-    [ --Docs.ReviewAtDocs.rule
-      --, NoConfusingPrefixOperator.rule
-      NoDebug.TodoOrToString.rule
-        |> Rule.ignoreErrorsForDirectories [ "tests/" ]
-    , NoExposingEverything.rule
-    , NoImportingEverything.rule []
+    List.map (Rule.ignoreErrorsForDirectories vendoredDirectories)
+        [ --Docs.ReviewAtDocs.rule
+          --, NoConfusingPrefixOperator.rule
+          NoDebug.TodoOrToString.rule
+            |> Rule.ignoreErrorsForDirectories [ "tests/" ]
+        , NoExposingEverything.rule
+        , NoImportingEverything.rule []
 
-    --, NoMissingTypeAnnotation.rule
-    --, NoMissingTypeAnnotationInLetIn.rule
-    --, NoMissingTypeExpose.rule
-    --, NoSimpleLetBody.rule
-    --, NoPrematureLetComputation.rule
-    --, NoUnused.CustomTypeConstructors.rule []
-    --, NoUnused.CustomTypeConstructorArgs.rule
-    -- NoUnused.Dependencies disabled: Lamdera regenerates elm.json and keeps
-    -- elm/browser and elm/bytes in `direct` even though no app code imports them.
-    , NoUnused.Exports.rule
-        |> Rule.ignoreErrorsForFiles lamderaMagicModules
+        --, NoMissingTypeAnnotation.rule
+        --, NoMissingTypeAnnotationInLetIn.rule
+        --, NoMissingTypeExpose.rule
+        --, NoSimpleLetBody.rule
+        --, NoPrematureLetComputation.rule
+        --, NoUnused.CustomTypeConstructors.rule []
+        --, NoUnused.CustomTypeConstructorArgs.rule
+        -- NoUnused.Dependencies disabled: Lamdera regenerates elm.json and keeps
+        -- elm/browser and elm/bytes in `direct` even though no app code imports them.
+        , NoUnused.Exports.rule
+            |> Rule.ignoreErrorsForFiles lamderaMagicModules
 
-    --, NoUnused.Parameters.rule
-    --, NoUnused.Patterns.rule
-    , NoUnused.Variables.rule
+        --, NoUnused.Parameters.rule
+        --, NoUnused.Patterns.rule
+        , NoUnused.Variables.rule
 
-    --, Simplify.rule Simplify.defaults
-    ]
+        --, Simplify.rule Simplify.defaults
+        ]
