@@ -161,7 +161,14 @@ view : Model -> Effect.Browser.Document FrontendMsg
 view model =
     { title = ""
     , body =
-        [ Html.div [ Attr.style "text-align" "center", Attr.style "padding-top" "40px" ]
+        [ -- Tailwind stylesheet. Lamdera serves public/ statically at the site
+          -- root, so public/output.css is reachable at /output.css. A plain
+          -- <link> in <head> does nothing under Lamdera, so we inject it here.
+          -- ?dev is a content-hash cache-buster stamped by scripts/cachebust.js
+          -- (dev watcher + pre-commit) from the hash of output.css, so the URL
+          -- changes only when the CSS actually changes.
+          Html.node "link" [ Attr.rel "stylesheet", Attr.href "/output.css?dev=5ab31c17" ] []
+        , Html.div [ Attr.style "text-align" "center", Attr.style "padding-top" "40px" ]
             [ Html.img [ Attr.src "https://lamdera.app/lamdera-logo-black.png", Attr.width 150 ] []
             , Html.div
                 [ Attr.style "font-family" "sans-serif"

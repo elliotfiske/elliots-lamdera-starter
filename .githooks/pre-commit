@@ -10,6 +10,57 @@
 
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Rebuild Tailwind output.css when a source that feeds it is staged.
+#
+# Lamdera serves public/* statically but never runs the Tailwind build on
+# deploy, so public/output.css is tracked. To stop it drifting from the .elm
+# class names, rebuild it here whenever an input changes and re-stage the
+# result so the commit always carries a fresh stylesheet.
+# ---------------------------------------------------------------------------
+OUTPUT_CSS="public/output.css"
+VIEW_ELM="src/Frontend.elm"   # file carrying the /output.css?dev=<hash> cache-buster
+CSS_INPUT_RE='^(src/.*\.elm|src/input\.css|tailwind\.config\.js)$'
+if git diff --cached --name-only --diff-filter=ACMR | grep -qE "$CSS_INPUT_RE"; then
+    # build:css scans the *working tree* (./src/**/*.elm), not the staged index,
+    # so any unstaged edit to a CSS input can make the committed output.css /
+    # cache-buster reflect content that isn't in this commit. We don't stash
+    # (pop would fight the output.css/Frontend.elm we restage); instead warn so
+    # the rare drift is visible — most commonly harmless extra utilities, but an
+    # unstaged class *removal* could omit a class the committed .elm still uses.
+    dirty_inputs=$(git diff --name-only -- | grep -E "$CSS_INPUT_RE" || true)
+    if [ -n "$dirty_inputs" ]; then
+        echo "pre-commit: CSS inputs have unstaged changes — output.css is built" >&2
+        echo "  from the working tree, so it may not match the staged .elm:" >&2
+        echo "$dirty_inputs" | sed 's/^/    /' >&2
+        echo "  Stage or stash these (or rebuild after) if styles look off." >&2
+    fi
+
+    echo "pre-commit: rebuilding $OUTPUT_CSS …" >&2
+    if ! npm run build:css >/dev/null 2>&1; then
+        echo "pre-commit: 'npm run build:css' failed — fix it or bypass with --no-verify." >&2
+        exit 1
+    fi
+    git add "$OUTPUT_CSS"
+
+    # Stamp the view's content-hash cache-buster so the committed markup
+    # matches the committed CSS (and the dev cachebust watcher, which uses the
+    # same hash, won't re-dirty the view after the commit). Only auto-stage the
+    # restamp when the user wasn't mid-editing the view, so we never sweep
+    # unrelated unstaged edits into the commit.
+    view_dirty_before=$(git diff --name-only -- "$VIEW_ELM")
+    if ! node scripts/cachebust.js --once; then
+        echo "pre-commit: cachebust failed — fix scripts/cachebust.js or bypass with --no-verify." >&2
+        exit 1
+    fi
+    if [ -z "$view_dirty_before" ]; then
+        git add "$VIEW_ELM"
+    elif ! git diff --quiet -- "$VIEW_ELM"; then
+        echo "pre-commit: $VIEW_ELM had unstaged edits — left the cache-buster" >&2
+        echo "  restamp unstaged so it won't sweep your in-progress changes." >&2
+    fi
+fi
+
 ENV_FILE="src/Env.elm"
 CLEAN_FILE="Env-Clean.elm"
 
