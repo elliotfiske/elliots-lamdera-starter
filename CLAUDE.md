@@ -1,6 +1,47 @@
 # lamdera-starter — Claude notes
 
-## Debugging frontend/backend state via Chrome DevTools Protocol
+## Inspecting the BackendModel (`lamdera backend`)
+
+For reading **backend state**, prefer `lamdera backend` over CDP — it evaluates
+an Elm expression against the live `lamdera live` BackendModel and prints the
+result. It's **read-only** (you can't assign to `model`), deterministic, and
+needs no browser, tab, or leader detection. If `lamdera live` isn't running it
+falls back to the last saved BackendModel.
+
+```bash
+lamdera backend --no-colors                                   # whole model
+lamdera backend --no-colors --eval='Dict.size model.someDict' # focused query
+lamdera backend --no-colors --import='import Set' \
+  --eval='Set.size model.someSet'                             # extra imports
+lamdera backend --repl                                        # interactive
+```
+
+- `model : Types.BackendModel` is in scope. `Dict` is imported by default;
+  anything else (`Set`, your own modules, …) needs `--import='import X'`
+  (repeatable).
+- Prefer a focused `--eval` over dumping the whole model — the full model can
+  be large and wastes context.
+- This is the right tool to verify backend effects without racing the WebSocket
+  connect → first-`ToFrontend` round-trip that makes CDP flaky right after a
+  reload.
+- **Scoping / parallel worktrees:** the expression is compiled against the
+  *current directory's* code, but the model *data* comes from the `lamdera live`
+  server on `--port` (default 8000), not the directory. With multiple worktrees,
+  run each `lamdera live` on its own `--port` and pass the matching `--port`
+  here — otherwise the default 8000 reads whichever worktree owns that port,
+  interpreted with the current dir's types (silently wrong if they've diverged).
+
+**There is no way to *write* the BackendModel** — not via `lamdera backend`
+(read-only) and not via CDP. CDP only drives the **frontend** (clicks, keydowns,
+reload); those change backend state only *indirectly*, through the normal
+`ToBackend` message flow. To set up backend state for a check, drive the UI —
+there is no direct-mutation tool.
+
+## Debugging frontend state via Chrome DevTools Protocol
+
+CDP is for the **frontend**: console logs, screenshots, rendered DOM, and
+triggering UI actions. For backend *model* inspection use `lamdera backend`
+(above) instead.
 
 Lamdera's official Chrome extension/MCP is blocked at the org level, so we tail
 the browser console over CDP directly. This gives Claude (or anyone) read-only
@@ -20,47 +61,51 @@ stays untouched:
 
 Run `lamdera live` as usual in another terminal.
 
+### Worktree port: auto-detected, override with `--port`
+
+The :9222 debug Chrome is often shared by several worktrees, each running
+`lamdera live` on its own port. To avoid attaching to another worktree's tab,
+the four single-target scripts (`cdp-console`, `cdp-eval`, `cdp-html`,
+`cdp-screenshot`) **auto-detect this worktree's port**: they match the running
+`lamdera live` process whose working directory is this worktree and use its port
+(see [scripts/cdp-port.js](scripts/cdp-port.js)). You'll see
+`[cdp] auto-detected this worktree's lamdera port: <n>` on stderr.
+
+Pass `--port <n>` (or `--port=<n>`) to override — e.g. to target *another*
+worktree's tab, or when detection can't decide (no `lamdera live` matches this
+worktree's cwd, or several do; it prints a hint and falls back to the first
+matching `localhost` tab). `cdp-tabs` doesn't auto-detect — it lists every tab
+by design (use it to discover ports), and still honors `--port` to filter.
+
 ### Tailing logs
 
 ```bash
 node scripts/cdp-console.js 10           # listen for 10 seconds
+node scripts/cdp-console.js --port 8002 10   # pin to this worktree's port
 node scripts/cdp-console.js 30 ws://...  # override tab WS URL
 ```
 
-Auto-picks the first `localhost:8000` tab. To list tabs manually:
+To list tabs:
 
 ```bash
-curl -s http://localhost:9222/json | jq '.[] | select(.type=="page") | {title,url,webSocketDebuggerUrl}'
+node scripts/cdp-tabs.js            # compact list
+node scripts/cdp-tabs.js --port 8002  # only this worktree's tabs
+node scripts/cdp-tabs.js --ws       # include each tab's webSocket URL
+node scripts/cdp-tabs.js --json     # machine-readable (trimmed fields)
 ```
 
 CDP only streams events going forward — to capture init-time logs, reload the
 page *after* the listener is running (or trigger reload via
 `Runtime.evaluate { expression: "location.reload()" }`).
 
-### Leader tab (where the backend lives)
-
-In Lamdera dev, the backend runs in **one specific tab** — the "leader" — not
-in the terminal. Backend `Debug.log` output and all `ToBackend`/`BackendMsg`
-traces only appear in that tab's console. Visually it's the tab with the small
-green dot on the Lamdera devbar (bottom-left).
-
-The script auto-prefers the leader when multiple `localhost:8000` tabs are
-open. Detection: scan the fixed-position devbar for a child `div` styled with
-`background-color: rgb(166, 240, 152)`. If you close the leader tab, another
-tab is promoted — re-run the script to re-detect.
-
-If only one tab is open, it's always the leader.
-
-### Evaluating JS in the leader tab
-
-For one-shot inspection / triggering actions, use the eval companion script:
+### Evaluating JS in a tab
 
 ```bash
 node scripts/cdp-eval.js "document.title"
 node scripts/cdp-eval.js "location.reload(); 'reloading'"
 node scripts/cdp-eval.js "({url: location.href, ls: Object.keys(localStorage)})"
 echo "(async () => { ... })()" | node scripts/cdp-eval.js -      # stdin
-node scripts/cdp-eval.js --any "1+1"                              # skip leader check
+node scripts/cdp-eval.js --port 8002 "1+1"                        # pin worktree's port
 ```
 
 Multi-statement scripts work; the last expression's value is returned. For
@@ -69,8 +114,6 @@ Objects are auto-JSON-stringified. Exceptions print to stderr with exit code 1.
 
 ### Screenshots and rendered HTML
 
-For UI iteration, capture the live (post-Elm-init) DOM as a PNG or HTML:
-
 ```bash
 node scripts/cdp-screenshot.js                          # → /tmp/lamdera-screenshot.png
 node scripts/cdp-screenshot.js --full-page              # capture beyond viewport
@@ -78,12 +121,13 @@ node scripts/cdp-screenshot.js --out shot.png           # custom path
 node scripts/cdp-html.js                                # full document → stdout
 node scripts/cdp-html.js --selector '[data-testid="x"]' # outerHTML of one node
 node scripts/cdp-html.js --out page.html                # write to file
+node scripts/cdp-screenshot.js --port 8002              # pin worktree's port
 ```
 
-Both auto-pick the leader tab (`--any` to skip). The screenshot script prints
-the output path on stdout so the Read tool can open the PNG directly. Use
-`cdp-html.js` instead of `curl localhost:8000` when you need post-render
-output — the curl response is just Lamdera's bootstrap shell.
+Both auto-detect this worktree's port (`--port <n>` to override). The screenshot
+script prints the output path on stdout so the Read tool can open the PNG
+directly. Use `cdp-html.js` instead of `curl localhost:8000` when you need
+post-render output — the curl response is just Lamdera's bootstrap shell.
 
 ### What Lamdera already logs for free
 
@@ -102,8 +146,12 @@ In dev mode, Lamdera pipes a lot of state into the browser console with no
 | ` ◀️B : <msg>` | Backend → Frontend send |
 | `F◀️  : <msg>` | Frontend receives ToFrontend |
 
-So for read-only inspection of `BackendModel`, `FrontendModel`, or any msg
-flowing between them, **just attach the listener** — no source edits needed.
+So for read-only inspection of `FrontendModel` or any msg flowing through a
+tab, **just attach the listener** — no source edits needed. Note the
+backend-side traces (` ▶️B`, `  B`, ` ◀️B`, `Restored BackendModel`) only
+surface in the leader tab's console, and the scripts attach to an arbitrary
+tab — so to read backend state reliably, use `lamdera backend` from the
+terminal (see the top section) rather than fishing for it in the console.
 
 ### `Debug.log` escape hatch
 
@@ -125,10 +173,65 @@ worktree, not the main checkout. If your `Debug.log` edit compiles on disk but
 never fires in the browser, check `lsof -p $(pgrep -f 'lamdera live') | grep cwd`
 and edit there instead.
 
+## Deploying (`npm run deploy`)
+
+Production deploys run from **`main`** on the primary checkout (not a worktree —
+lamdera can't run where `.git` is a pointer file). `scripts/deploy.sh` enforces
+the invariant that local `main` only ever mirrors `origin/main`, and hard-stops
+before pushing if the tree is dirty, `main` has un-pushed commits, or
+`lamdera check` would generate an uncommitted Evergreen migration. See the
+[`lamdera-deploy`](.claude/skills/lamdera-deploy/SKILL.md) skill for the full
+PR-first migration workflow — the `.githooks/pre-push` gate runs `lamdera check`
+on every push so a missing migration is caught at PR time, not deploy time.
+
+## Running the dev server (`npm start`)
+
+`npm start` runs [scripts/run.js](scripts/run.js), which babysits the local dev
+stack: it picks free ports, does a one-shot `build:css`, starts the Tailwind and
+cachebust watchers, pre-warms `elm-stuff`, launches `lamdera live` (auto-restarting
+it on a crash or a known bad-state pattern), and — unless `--no-chrome` — opens a
+debuggable Chrome (`:9222`+) pointed at the app (that's the CDP target the
+`scripts/cdp-*.js` tools attach to). Override ports with `LAMDERA_PORT` /
+`CHROME_PORT`; skip Chrome with `node scripts/run.js --no-chrome`.
+
+## Tailwind
+
+Tailwind v3 via the standalone CLI. Source is `src/input.css` → `public/output.css`
+(served by Lamdera at `/output.css`).
+
+```bash
+npm run build:css     # one-shot
+npm run watch:css     # rebuild on Elm changes
+```
+
+`public/output.css` **is committed to git** (it is *not* gitignored): Lamdera
+publishes static assets from the git remote, so the built stylesheet must be
+checked in for production to serve it. The pre-commit hook rebuilds and re-stages
+it; if you regenerate it manually, `git add public/output.css` along with your
+change.
+
+`tailwind.config.js` scans `./src/**/*.elm` for class names — re-run the build
+after adding new classes (or keep `watch:css` going alongside `lamdera live`). The
+stylesheet is wired into the page by a `<link rel="stylesheet"
+href="/output.css?dev=<hash>">` node in `Frontend.elm`'s `view` (a plain `<head>`
+link does nothing under Lamdera). `?dev=<hash>` is a content-hash cache-buster
+stamped by [scripts/cachebust.js](scripts/cachebust.js) (dev watcher + pre-commit)
+from the hash of `output.css`, so the URL changes only when the CSS actually
+changes. If you move the view into its own module, update `viewPath` in
+`cachebust.js` and `VIEW_ELM` in `.githooks/pre-commit` to point at it.
+
 ## Other conventions
 
 - Backlog lives in [TODO.md](TODO.md).
-- E2E tests run via `npm test`.
+- E2E tests live in [tests/E2ETests.elm](tests/E2ETests.elm) and run via
+  `npm test` (elm-test-rs against the lamdera compiler). The `.claude/skills/`
+  directory has a `red-green-tdd` skill and a set of `testing-*` skills
+  (quick-ref, user-interaction, view-assertions, http-mocking, timing,
+  pitfalls) for `lamdera/program-test`.
+- CI ([.github/workflows/tests.yml](.github/workflows/tests.yml)) runs
+  `elm-review` + `npm test` on PRs, installing a **checksum-pinned** Lamdera
+  compiler (bump both `LAMDERA_VERSION` and `LAMDERA_SHA256` in lockstep when
+  upgrading).
 - `src/Env.elm` is guarded by a pre-commit hook against secret leaks
   ([.githooks](.githooks/)).
 - `elm-review` runs on file edits via a `PostToolUse` hook in

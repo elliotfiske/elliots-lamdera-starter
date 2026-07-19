@@ -7,19 +7,33 @@
 //   node scripts/cdp-eval.js "document.title"
 //   node scripts/cdp-eval.js "location.reload(); 'reloading'"
 //   echo "1+2" | node scripts/cdp-eval.js -            # read expression from stdin
-//   node scripts/cdp-eval.js --any "document.title"    # don't insist on leader tab
+//   node scripts/cdp-eval.js --port 8002 "1+1"         # only localhost:8002 tabs
 //
-// Auto-picks the Lamdera leader tab by default. Wraps the expression in an
-// IIFE so multi-statement scripts work and `const`/`let` are scoped. Awaits
-// promises automatically.
+// Picks the first matching localhost tab. With several worktrees each running
+// `lamdera live` on its own port in the shared debug Chrome, pass --port to pin
+// selection to your worktree's port. Wraps the expression in an IIFE so
+// multi-statement scripts work and `const`/`let` are scoped. Awaits promises
+// automatically. This drives the *frontend*; for backend state use
+// `lamdera backend` from the terminal (see CLAUDE.md).
 
 const http = require('http');
 const WebSocket = require('ws');
+const { detectWorktreePort } = require('./cdp-port');
 
 const args = process.argv.slice(2);
-const anyTab = args.includes('--any');
-const exprArg = args.filter((a) => a !== '--any')[0];
-if (!exprArg) { console.error('usage: cdp-eval.js [--any] <expression|->'); process.exit(1); }
+let port = null;
+const positional = [];
+for (let i = 0; i < args.length; i++) {
+  const a = args[i];
+  if (a === '--port') { port = args[++i]; continue; }
+  if (a.startsWith('--port=')) { port = a.slice('--port='.length); continue; }
+  positional.push(a);
+}
+if (port !== null && !/^\d+$/.test(port || '')) { console.error(`invalid --port: ${port}`); process.exit(1); }
+// No explicit --port: try to default to this worktree's lamdera-live port.
+if (port === null) port = detectWorktreePort();
+const exprArg = positional[0];
+if (!exprArg) { console.error('usage: cdp-eval.js [--port <n>] <expression|->'); process.exit(1); }
 
 async function readExpr() {
   if (exprArg !== '-') return exprArg;
@@ -38,48 +52,17 @@ const fetchTabs = () => new Promise((resolve, reject) => {
   }).on('error', reject);
 });
 
-function isLeaderTab(wsUrl) {
-  return new Promise((resolve) => {
-    const probe = new WebSocket(wsUrl);
-    const timeout = setTimeout(() => { try { probe.close(); } catch {} resolve(false); }, 2000);
-    probe.on('open', () => {
-      probe.send(JSON.stringify({
-        id: 1,
-        method: 'Runtime.evaluate',
-        params: {
-          expression: `(() => {
-            const devbar = [...document.querySelectorAll('div')]
-              .filter(el => getComputedStyle(el).position === 'fixed')
-              .find(el => el.innerText?.includes('Env:'));
-            return !!devbar?.querySelector('div[style*="rgb(166, 240, 152)"]');
-          })()`,
-          returnByValue: true,
-        },
-      }));
-    });
-    probe.on('message', (d) => {
-      const m = JSON.parse(d);
-      if (m.id === 1) {
-        clearTimeout(timeout);
-        try { probe.close(); } catch {}
-        resolve(m.result?.result?.value === true);
-      }
-    });
-    probe.on('error', () => { clearTimeout(timeout); resolve(false); });
-  });
-}
-
 async function pickTab() {
-  const tabs = (await fetchTabs()).filter((t) => t.type === 'page' && t.url.includes('localhost:8000'));
-  if (!tabs.length) throw new Error('no localhost:8000 tab found on :9222');
-  if (!anyTab) {
-    for (const t of tabs) {
-      if (await isLeaderTab(t.webSocketDebuggerUrl)) {
-        console.error(`[cdp] leader tab: ${t.title} — ${t.url}`);
-        return t.webSocketDebuggerUrl;
-      }
-    }
-    console.error('[cdp] no leader tab found; falling back to first tab (use --any to silence)');
+  const urlRe = port
+    ? new RegExp(`^https?://localhost:${port}(/|$)`)
+    : /^https?:\/\/localhost:\d+/;
+  const tabs = (await fetchTabs()).filter((t) => t.type === 'page' && urlRe.test(t.url));
+  if (!tabs.length) {
+    throw new Error(
+      port
+        ? `no localhost:${port} tab found on :9222`
+        : 'no localhost tab found on :9222 (the URL must include an explicit port, e.g. http://localhost:8000)'
+    );
   }
   const t = tabs[0];
   console.error(`[cdp] tab: ${t.title} — ${t.url}`);

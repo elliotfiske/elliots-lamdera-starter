@@ -7,7 +7,10 @@
 //   node scripts/cdp-screenshot.js                       # → /tmp/lamdera-screenshot.png
 //   node scripts/cdp-screenshot.js --out shot.png        # custom output path
 //   node scripts/cdp-screenshot.js --full-page           # capture beyond viewport
-//   node scripts/cdp-screenshot.js --any                 # don't insist on leader tab
+//   node scripts/cdp-screenshot.js --port 8002           # only localhost:8002 tabs
+//
+// Picks the first matching localhost tab. Pass --port when several worktrees
+// run `lamdera live` in the shared debug Chrome to pin to your worktree's port.
 //
 // Prints the absolute output path on stdout; the Read tool can open the PNG.
 
@@ -15,10 +18,21 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const WebSocket = require('ws');
+const { detectWorktreePort } = require('./cdp-port');
 
 const args = process.argv.slice(2);
-const anyTab = args.includes('--any');
+const portEq = args.find((a) => a.startsWith('--port='));
+const portIdx = args.indexOf('--port');
+let port = portEq ? portEq.slice('--port='.length) : portIdx >= 0 ? args[portIdx + 1] : null;
+if (port !== null && !/^\d+$/.test(port || '')) { console.error(`invalid --port: ${port}`); process.exit(1); }
+// No explicit --port: try to default to this worktree's lamdera-live port.
+if (port === null) port = detectWorktreePort();
 const fullPage = args.includes('--full-page');
+const mobile = args.includes('--mobile');
+const widthIdx = args.indexOf('--width');
+const heightIdx = args.indexOf('--height');
+const customWidth = widthIdx >= 0 ? parseInt(args[widthIdx + 1], 10) : null;
+const customHeight = heightIdx >= 0 ? parseInt(args[heightIdx + 1], 10) : null;
 const outIdx = args.indexOf('--out');
 const outPath = path.resolve(outIdx >= 0 ? args[outIdx + 1] : '/tmp/lamdera-screenshot.png');
 
@@ -30,48 +44,17 @@ const fetchTabs = () => new Promise((resolve, reject) => {
   }).on('error', reject);
 });
 
-function isLeaderTab(wsUrl) {
-  return new Promise((resolve) => {
-    const probe = new WebSocket(wsUrl);
-    const timeout = setTimeout(() => { try { probe.close(); } catch {} resolve(false); }, 2000);
-    probe.on('open', () => {
-      probe.send(JSON.stringify({
-        id: 1,
-        method: 'Runtime.evaluate',
-        params: {
-          expression: `(() => {
-            const devbar = [...document.querySelectorAll('div')]
-              .filter(el => getComputedStyle(el).position === 'fixed')
-              .find(el => el.innerText?.includes('Env:'));
-            return !!devbar?.querySelector('div[style*="rgb(166, 240, 152)"]');
-          })()`,
-          returnByValue: true,
-        },
-      }));
-    });
-    probe.on('message', (d) => {
-      const m = JSON.parse(d);
-      if (m.id === 1) {
-        clearTimeout(timeout);
-        try { probe.close(); } catch {}
-        resolve(m.result?.result?.value === true);
-      }
-    });
-    probe.on('error', () => { clearTimeout(timeout); resolve(false); });
-  });
-}
-
 async function pickTab() {
-  const tabs = (await fetchTabs()).filter((t) => t.type === 'page' && t.url.includes('localhost:8000'));
-  if (!tabs.length) throw new Error('no localhost:8000 tab found on :9222');
-  if (!anyTab) {
-    for (const t of tabs) {
-      if (await isLeaderTab(t.webSocketDebuggerUrl)) {
-        console.error(`[cdp] leader tab: ${t.title} — ${t.url}`);
-        return t.webSocketDebuggerUrl;
-      }
-    }
-    console.error('[cdp] no leader tab found; falling back to first tab (use --any to silence)');
+  const urlRe = port
+    ? new RegExp(`^https?://localhost:${port}(/|$)`)
+    : /^https?:\/\/localhost:\d+/;
+  const tabs = (await fetchTabs()).filter((t) => t.type === 'page' && urlRe.test(t.url));
+  if (!tabs.length) {
+    throw new Error(
+      port
+        ? `no localhost:${port} tab found on :9222`
+        : 'no localhost tab found on :9222 (the URL must include an explicit port, e.g. http://localhost:8000)'
+    );
   }
   const t = tabs[0];
   console.error(`[cdp] tab: ${t.title} — ${t.url}`);
@@ -102,6 +85,17 @@ async function main() {
   ws.on('error', (e) => { console.error('ws error:', e.message); process.exit(1); });
 
   await new Promise((r) => ws.on('open', r));
+
+  if (mobile || customWidth || customHeight) {
+    const width = customWidth || (mobile ? 390 : 1024);
+    const height = customHeight || (mobile ? 844 : 768);
+    await send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height,
+      deviceScaleFactor: mobile ? 2 : 1,
+      mobile: !!mobile,
+    });
+  }
 
   const params = { format: 'png' };
   if (fullPage) {
