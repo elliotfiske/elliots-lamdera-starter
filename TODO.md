@@ -140,6 +140,15 @@ with a custom rule that knows Lamdera's runtime contract.
   decides to call, which can drift across Lamdera versions. A published
   package would need version-pinning notes.
 
+## 7. Staging data for preview apps
+
+Preview apps (`<app>-pr-<N>.lamdera.app`) start with an empty backend and reset
+on every deploy, and Lamdera has no built-in staging flow. Idea: an admin-only
+pair of RPC endpoints (RPC is already wired via `ping`) to export the prod
+BackendModel (or a scrubbed subset) as JSON and import it into a preview. A
+`preview.yml` step could then seed each `pr-<N>` app after deploy. Needs auth
+(a shared secret in `Env.elm`) and a codec for the model.
+
 ---
 
 ## Suggested order
