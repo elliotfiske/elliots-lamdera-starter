@@ -1,20 +1,13 @@
-module Types exposing
-    ( BackendModel
-    , BackendMsg(..)
-    , FrontendModel
-    , FrontendMsg(..)
-    , ToBackend(..)
-    , ToFrontend(..)
-    )
+module Evergreen.V1.Types exposing (..)
 
-import Effect.Browser exposing (UrlRequest)
-import Effect.Browser.Navigation exposing (Key)
+import Effect.Browser
+import Effect.Browser.Navigation
 import Effect.Lamdera
-import Url exposing (Url)
+import Url
 
 
 type alias FrontendModel =
-    { key : Key
+    { key : Effect.Browser.Navigation.Key
     , message : String
     }
 
@@ -25,8 +18,8 @@ type alias BackendModel =
 
 
 type FrontendMsg
-    = UrlClicked UrlRequest
-    | UrlChanged Url
+    = UrlClicked Effect.Browser.UrlRequest
+    | UrlChanged Url.Url
     | PingClicked
     | NoOpFrontendMsg
 
