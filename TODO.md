@@ -40,40 +40,18 @@ introspects `lamdera_handleEndpoints` without any Elm code calling it.
 
 ---
 
-## 3. Auth: Sign in with GitHub ✅
+## 3. Auth: Sign in with GitHub — removed
 
-`lamdera/auth` is copy-vendored under `vendor/lamdera-auth/` and wired up for
-GitHub OAuth. `src/Auth.elm` holds the config; `Types.elm` carries the
-auth-related fields (`authFlow`, `authRedirectBaseUrl`, `currentUser`,
-`pendingAuths`, `authenticatedSessions`); `Frontend.elm` handles
-`/login/OAuthGithub/callback` and shows a "Sign in with GitHub" button.
+Was implemented by copy-vendoring `lamdera/auth` (GitHub OAuth), then removed:
+its `Env.githubClientId` / `githubClientSecret` must have production values in
+the Lamdera dashboard for *every* app, and each `pr-<N>` preview is a separate
+app, so every preview deploy was rejected ("MISSING PRODUCTION CONFIG"). A
+GitHub OAuth App also allows only one callback URL, so sign-in could never work
+on preview domains anyway. To bring auth back, see the git history (commit
+before the removal) and plan for per-preview config.
 
-Architectural notes:
-- The Effect/raw-`Cmd` mismatch is bridged with `Effect.Command.fromCmd "auth"`
-  on the backend.
-- The frontend replicates `Auth.Flow.init` manually so it can use
-  `Effect.Browser.Navigation` (the package's version needs a raw
-  `Browser.Navigation.Key`).
-- The frontend constructs `AuthCallbackReceived` directly with the callback
-  URL — `Auth.Protocol.OAuth.accessTokenRequested` would have sent
-  `authRedirectBaseUrl` (path `/`), causing a `redirect_uri` mismatch on the
-  token exchange.
-- On `ClientConnected`, the backend re-pushes `GotUser` if the session is
-  already authenticated, so reloads restore the signed-in UI.
-- Privacy-first: vendored `Auth.Method.OAuthGithub` is locally patched to drop
-  the `user:email` scope and skip the `/user/emails` fallback. Users are
-  identified by GitHub username (no email collected).
-
-To deploy or switch GitHub OAuth Apps:
-1. Register the app at https://github.com/settings/developers with
-   `Authorization callback URL = <origin>/login/OAuthGithub/callback`.
-2. Set `Env.githubClientId` / `Env.githubClientSecret` in `src/Env.elm` locally
-   (NEVER in `Env-Clean.elm` — pre-commit hook blocks it).
-3. For production, set the same values via Lamdera's environment-variable UI.
-
-**Apple Sign-In** was the original plan; deferred. Apple's POST callback needs
-an HTTP endpoint, which on Lamdera means an RPC handler — so item #2 is still
-a prerequisite for that.
+Apple Sign-In (the original plan) is still deferred: its POST callback needs an
+HTTP endpoint, i.e. an RPC handler (item #2).
 
 ---
 
