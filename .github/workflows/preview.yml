@@ -23,9 +23,7 @@ jobs:
   deploy:
     # Forks don't get secrets.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    # Org policy: no GitHub-hosted runners. Needs outbound SSH (port 22) to
-    # apps.lamdera.com — the setup action fails with a clear error if not.
-    runs-on: prod-arc-runner-set
+    runs-on: ubuntu-latest
     outputs:
       url: ${{ steps.push.outputs.url }}
     steps:
@@ -55,7 +53,7 @@ jobs:
 
   screenshots:
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: prod-arc-runner-set
+    runs-on: ubuntu-latest
     outputs:
       commit: ${{ steps.publish.outputs.commit }}
       files: ${{ steps.shoot.outputs.files }}
@@ -69,7 +67,7 @@ jobs:
         uses: ./.github/actions/lamdera-setup
 
       - name: Install Chromium
-        run: npx playwright-core install chromium
+        run: npx playwright-core install --with-deps chromium
 
       # Screenshot a local `lamdera live` rather than the preview: it's ready
       # immediately and doesn't depend on the Lamdera build queue.
@@ -97,7 +95,7 @@ jobs:
   comment:
     needs: [deploy, screenshots]
     if: always() && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: prod-arc-runner-set
+    runs-on: ubuntu-latest
     steps:
       - name: Upsert PR comment
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
