@@ -44,7 +44,11 @@ function arg(name, fallback) {
       for (const route of config.routes) {
         const file = path.join(outDir, `${route.name}-${vp.name}.png`);
         try {
-          await page.goto(base + route.path, { waitUntil: 'networkidle', timeout: 30000 });
+          await page.goto(base + route.path, { waitUntil: 'load', timeout: 30000 });
+          // `lamdera live` keeps long-lived connections (websocket, dev-tool
+          // polling) open, so networkidle may never fire — treat it as a
+          // best-effort wait rather than a requirement.
+          await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
           // Lamdera opens a websocket and renders the first ToFrontend after
           // load; give it a beat so we don't capture the pre-connect frame.
           await page.waitForTimeout(Number(route.settleMs ?? 1000));
